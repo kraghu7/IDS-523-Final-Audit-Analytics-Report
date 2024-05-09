@@ -1,0 +1,592 @@
+---
+title: "IDS523-Final Exam_Kritika_Yeoeun"
+author: "Kritika Raghuwanshi"
+date: "`r Sys.Date()`"
+output:
+  pdf_document:
+    latex_engine: lualatex
+  word_document: default
+header-includes:
+  - \usepackage{sectsty}
+  - \sectionfont{\centering}
+  - \renewcommand{\figurename}{\textbf{Figure }}
+  - \makeatletter
+  - \def\fnum@figure{\figurename\thefigure}
+  - \setlength{\abovecaptionskip}{2pt}
+  - \setlength{\belowcaptionskip}{2pt}
+  - \makeatother
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Question 1 Code
+
+```{r question 1}
+# Load necessary libraries
+library(readr)
+library(ggplot2)
+library(dplyr)
+library(nortest)
+library(e1071)
+library(knitr)
+
+# Function to check and install missing packages
+check_and_install <- function(package_name) {
+    if (!require(package_name, character.only = TRUE)) {
+        install.packages(package_name, dependencies = TRUE)
+        library(package_name, character.only = TRUE)
+    }
+}
+
+# Ensure all packages are installed
+check_and_install("readr")
+check_and_install("ggplot2")
+check_and_install("dplyr")
+check_and_install("nortest")
+check_and_install("e1071")
+check_and_install("knitr")
+
+# Read the data files
+ap_ledger <- read_csv("C:/GiggleGear_files/ap_ledger.csv")
+collections_journal <- read_csv("C:/GiggleGear_files/collections_journal.csv")
+disbursement_journal <- read_csv("C:/GiggleGear_files/disbursement_journal.csv")
+sales_journal <- read_csv("C:/GiggleGear_files/sales_journal.csv")
+
+# Function to analyze distributions and perform normality tests
+results <- list()
+analyze_distributions <- function(data, column, name) {
+    # Cleaning and preparing data
+    data_clean <- na.omit(data[[column]])
+    
+    # Histogram for visual inspection of distribution
+    p <- ggplot(data.frame(value = data_clean), aes(x = value)) +
+    geom_histogram(bins = 30, fill = "blue", alpha = 0.7) +
+    labs(title = paste("Distribution of", column), x = column, y = "Frequency")
+    
+    # Perform normality test
+    normality_test <- ad.test(data_clean)
+    
+    # Calculate additional statistics
+    skewness_val <- skewness(data_clean)
+    kurtosis_val <- kurtosis(data_clean)
+    
+    # Determine risk level based on p-value and other metrics
+    risk_level <- ifelse(normality_test$p.value < 0.05, "Moderate", "Low")
+    
+    risk_level <- 
+    ifelse(abs(skewness_val) > 1 || kurtosis_val > 4, "High", risk_level)
+    
+    risk_level <- 
+    ifelse(abs(skewness_val) > 2 || kurtosis_val > 7, "Very High", risk_level)
+    
+    # Choose audit technique based on risk level
+    audit_technique <- 
+    ifelse(risk_level == "Very High", "Forensic Analysis",
+    ifelse(risk_level == "High", "Data Mining",
+    ifelse(risk_level == "Moderate", "Advanced Statistical Models", 
+    "Standard Procedures")))
+    
+    # Print results and plot
+    print(p)
+    
+    print(paste("p-value:", normality_test$p.value,
+    "Skewness:", skewness_val, "Kurtosis:", kurtosis_val))
+    
+    print(paste("Risk level for", name, "is", risk_level))
+    
+    # Return updated RAM entry
+    return(data.frame(Category = name, Risk_Level = risk_level, 
+    Audit_Technique = audit_technique, 
+    Budget_Allocation = ifelse(risk_level != "Moderate", "Increased", 
+    "Standard")))
+}
+
+# Analyze distributions for selected columns and update RAM
+RAM_entries <- rbind(
+    analyze_distributions(ap_ledger, "extended_cost", "Extended Cost"),
+    analyze_distributions(collections_journal, "collection_amount",
+                          "Collection Amount"),
+    analyze_distributions(disbursement_journal, "unit_cost", "Unit Cost"),
+    analyze_distributions(sales_journal, "sales_extended", "Sales Extended")
+)
+
+# Print updated RAM
+kable(RAM_entries)
+```
+
+\newpage
+
+# Explanation
+
+# Implications for Audit Risk, Scope, Sample Sizes, and Audit Statistical Tests
+
+1. **Audit Scope:** The existence of outliers necessitates a broader audit scope to investigate these anomalies, as they could represent significant risks or errors in the financial statements.
+
+2. **Sample Sizes:** Standard sampling techniques may be inadequate to capture the true nature of the data. Instead, the audit might require employing stratified or targeted sampling techniques, with a particular focus on the larger transactions that contribute to the skewness.
+
+3. **Audit Statistical Tests:** Traditional parametric tests that assume normality will not be valid for this data. Non-parametric tests or data analytical approaches might be necessary to appropriately assess such skewed distributions.
+
+# Adjustments to the Risk Assessment Matrix (RAM) and Audit Budget
+
+1. **Audit Techniques:** The selection of audit techniques in the RAM entries like "Data Mining" for high-risk categories and "Advanced Statistical Models" for moderate risk reflects an appropriate response to the data characteristics. Consider including techniques like anomaly detection and forensic analysis for very high-risk categories if they arise in future analyses.
+
+2. **Budget Allocation:** The budget allocations should be adjusted to ensure sufficient resources are available for employing advanced statistical models and data mining techniques. For categories marked as "High" risk, an increased budget will facilitate a deeper investigation into the outliers and skewed distributions.
+
+3. **Communication:** It is essential to maintain clear communication with the audit team and management regarding the complexities uncovered in the data analysis. This includes explaining the need for advanced techniques and possibly extending the audit timeline to manage these complexities.
+
+\newpage
+
+\sectionfont{\centering}
+  
+# Question 2 Code
+
+```{r question 2}
+# Load the necessary libraries
+library(dplyr)
+library(readr)
+
+# Define the function to calculate duplication rates
+calculate_duplicate_rates <- function(data, field) {
+    # Calculate duplicates from both the start and end of the dataset
+    duplicates <- duplicated(data[[field]]) | 
+    duplicated(data[[field]], fromLast = TRUE)
+    
+    num_duplicates <- sum(duplicates)
+    num_total <- nrow(data)
+    percent_duplicates <- (num_duplicates / num_total) * 100
+    
+    percent_duplicates
+}
+
+# Define a function to determine control status based on the % of duplicates
+determine_control_status <- function(percent_duplicates, threshold = 1) {
+    if (percent_duplicates > threshold) {
+        return("Out-of-Control")
+    } else {
+        return("In-Control")
+    }
+}
+
+# Read in the data files
+sales_journal <- read_csv("C:/GiggleGear_files/sales_journal.csv")
+
+real_world_cash_sales <- 
+read_csv("C:/GiggleGear_files/real_world_cash_sales.csv")
+
+real_world_credit_sales <- 
+read_csv("C:/GiggleGear_files/real_world_credit_sales.csv")
+
+shipments_journal <- read_csv("C:/GiggleGear_files/shipments_journal.csv")
+
+collections_journal <- read_csv("C:/GiggleGear_files/collections_journal.csv")
+
+real_world_collections <- 
+read_csv("C:/GiggleGear_files/real_world_collections.csv")
+
+daily_ar_balance <- read_csv("C:/GiggleGear_files/daily_ar_balance.csv")
+
+# Combine sales data to check for invoice duplicates
+all_sales <- bind_rows(sales_journal, real_world_cash_sales, 
+                       real_world_credit_sales)
+
+# Calculate duplicate rates for each category
+invoice_duplicate_rate <- calculate_duplicate_rates(all_sales, "invoice_no")
+
+shipping_duplicate_rate <- 
+calculate_duplicate_rates(shipments_journal, "shipper_no")
+
+collection_duplicate_rate <- 
+calculate_duplicate_rates(bind_rows(collections_journal, 
+real_world_collections), "collection_no")
+
+credit_balance_duplicate_rate <- 
+calculate_duplicate_rates(daily_ar_balance, "customer_no")
+
+# Determine control status for each system based on duplicates
+invoice_control_status <- determine_control_status(invoice_duplicate_rate)
+
+shipping_control_status <- determine_control_status(shipping_duplicate_rate)
+
+collection_control_status <- determine_control_status(collection_duplicate_rate)
+
+credit_balance_control_status <- 
+determine_control_status(credit_balance_duplicate_rate)
+```
+
+\newpage
+
+```{r}
+# Print results
+print(paste("Invoice System:", invoice_control_status))
+print(paste("Shipping System:", shipping_control_status))
+print(paste("Collection Receipt System:", collection_control_status))
+print(paste("Customers with Credit Balances System:", 
+            credit_balance_control_status))
+```
+
+# Explanation
+
+## Invoice System:
+
+- **Status:** The invoice system is identified as "Out-of-Control" due to a high rate of duplicate invoices.
+
+## Shipping System:
+
+- **Status:** The shipping system's error rate falls within the tolerable range, and it is therefore considered to be operating in an "In-Control" state.
+
+## Collection Receipt System:
+
+- **Status:** The collection receipt system's error rate surpasses the tolerable rate, signaling that it is operating in an "Out-of-Control" state.
+
+## Customers with Credit Balances System:
+
+- **Status:** The error rate for customers with credit balances is within the tolerable range, implying that it is operating in an "In-Control" state.
+
+\newpage
+
+\sectionfont{\centering}
+  
+# Question 3 Code
+
+```{r question 3}
+library(readr)
+library(dplyr)
+
+# Set the confidence level and the tolerable error amount
+confidence_level <- 0.95
+tolerable_error <- 100000
+
+# Function to calculate the discovery sample size
+calculate_sample_size <- function(tolerable_error, confidence_level) {
+    error_probability <- 1 - confidence_level
+    # We assume the error rate is proportional to the tolerable error
+    intolerable_rate <- tolerable_error / (tolerable_error + 1) 
+    sample_size <- ceiling(log(error_probability) / log(1 - intolerable_rate))
+    return(sample_size)
+}
+
+# Calculate the discovery sample size
+discovery_sample_size <- calculate_sample_size(tolerable_error, confidence_level)
+
+# Load the sales journal file and the real-world sales data
+sales_journal <- read_csv("C:/GiggleGear_files/sales_journal.csv")
+real_world_sales <- bind_rows(
+    read_csv("C:/GiggleGear_files/real_world_cash_sales.csv"),
+    read_csv("C:/GiggleGear_files/real_world_credit_sales.csv")
+)
+
+# Sample the sales_journal file based on the calculated sample size
+set.seed(123) # for reproducibility
+sampled_sales_journal <- sales_journal %>% 
+    slice_sample(n = discovery_sample_size)
+
+# Compute error by comparing sampled sales_journal with real-world sales data
+sampled_real_world_sales <- real_world_sales %>% 
+    filter(invoice_no %in% sampled_sales_journal$invoice_no)
+
+sample_error <- 
+sampled_sales_journal$sales_extended - sampled_real_world_sales$collection_amount
+
+# Estimate the error in the population based on the sample error
+estimated_error_population <- 
+mean(sample_error, na.rm = TRUE) * nrow(sales_journal)
+
+# Determine if the error is intolerable
+is_intolerable_error <- abs(estimated_error_population) > tolerable_error
+
+# Calculate the acceptance sample size if the error is intolerable
+acceptance_sample_size <- if(is_intolerable_error) {
+    calculate_sample_size(abs(estimated_error_population), confidence_level)
+} else {
+    0
+}
+```
+
+\newpage
+
+```{r}
+# Output the results
+cat("Discovery Sample Size:", discovery_sample_size, "\n")
+cat("Estimated Error in Population:", estimated_error_population, "\n")
+cat("Is the error intolerable?", is_intolerable_error, "\n")
+cat("Acceptance Sample Size:", acceptance_sample_size, "\n")
+
+# Draw conclusions about the sales amounts
+if (is_intolerable_error) {
+    cat("The Sales amounts are materially in-error.\n")
+} else {
+    cat("The Sales amounts are fairly presented.\n")
+}
+```
+
+\newpage
+
+# Explanation
+
+1. **Minimum Sample Size (N):** The minimum sample size necessary to determine if sales are materially in error, with 95% confidence, has been calculated as 1. This result is derived from a discovery sampling approach designed to detect at least one error if the error rate in the population is at least 5%. However, in practice, this would be considered an unreasonably small sample size for making such determinations, as it does not provide a representative view of the entire sales journal.
+
+2. **Error in Sample:** No error was found in the sampled invoice when compared with the real-world cash and credit sales data. It’s important to note that this does not necessarily mean there are no errors in the entire sales journal; rather, no errors were detected within the very limited scope of this specific sample.
+
+3. **Estimated Error in Population:** The estimated error in the population, based on the sample, is $0. This indicates that within the sample taken, there was no discrepancy found between the sales journal and the actual sales data.
+
+4. **Intolerable Error:** Since the estimated error in the population is $0, it does not exceed the tolerable error limit of $100,000. Therefore, it is not considered intolerable, and no further action is required based on the sample analyzed.
+Acceptance Sample Size: Given that the estimated error is not intolerable, there is no need to calculate an acceptance sample size for further investigation. The sample size remains at 0, suggesting that, within the limitations of the sample, there is no indication of material misstatement.
+
+# Conclusion
+
+Based on the analysis of the sample provided, the sales amounts are considered to be fairly presented, as no material errors were detected. However, caution should be exercised due to the limitations of the sample size, and it is advisable to analyze a more significant and representative sample before drawing definitive conclusions about the entire sales journal.
+
+\newpage
+
+\sectionfont{\centering}
+  
+# Question 4 Code
+
+```{r question 4}
+# Load required libraries
+library(dplyr)
+library(knitr)
+
+# Set working directory
+setwd("C:/GiggleGear_files")
+
+# Read data files
+daily_ar_balance <- read.csv("daily_ar_balance.csv")
+fyear_end_ar_ledger <- read.csv("real_world_fyear_end_ar_ledger.csv")
+customer_credit_limits <- read.csv("customer_credit_limits.csv")
+
+# Convert dates to proper format
+daily_ar_balance$date <- as.Date(daily_ar_balance$date)
+fyear_end_ar_ledger$shipper_date <- as.Date(fyear_end_ar_ledger$shipper_date)
+
+# Calculate the age of invoices
+fyear_end_ar_ledger <- fyear_end_ar_ledger %>%
+  mutate(
+    invoice_age = as.numeric(as.Date("2021-12-31") - shipper_date),
+    invoice_age_group = case_when(
+      invoice_age < 30 ~ "<30 days old",
+      invoice_age >= 30 & invoice_age <= 60 ~ "30-60 days old",
+      invoice_age > 60 ~ ">60 days old"
+    )
+  )
+
+# Compute dollar and percentage totals
+totals <- fyear_end_ar_ledger %>%
+  group_by(invoice_age_group) %>%
+  summarise(
+    total_amount = sum(amount),
+    percentage_total = sum(amount) / sum(fyear_end_ar_ledger$amount) * 100
+  )
+
+# Print dollar and percentage totals
+kable(totals)
+```
+
+\newpage
+
+```{r}
+# List invoices over 60 days old and observe patterns
+invoices_over_60_days_old <- fyear_end_ar_ledger %>%
+  dplyr::filter(invoice_age_group == ">60 days old") %>%
+  select(customer_no, invoice_no, shipper_date, amount)
+
+kable(invoices_over_60_days_old)
+```
+
+\newpage
+
+# Explanation
+
+## All Invoices under 30 days old:
+  - Total Amount: **$1,062,320**
+  - Percentage of Total: **46.1%**
+
+## All Invoices between 30 to 60 days old:
+  - Total Amount: **$506,866**
+  - Percentage of Total: **22.0%**
+
+## All Invoices over 60 days old:
+  - Total Amount: **$734,742**
+  - Percentage of Total: **31.9%**
+
+## Looking at the list of invoices over 60 days old, some observations and patterns may include:
+
+  - Some customers have multiple invoices outstanding.
+  - There are invoices with zero amounts, indicating potential issues with billing or payment processing.
+  - Certain dates may have a higher frequency of overdue invoices.
+
+## To account for invoices outstanding for a long time, the company could implement several strategies:
+
+  - Follow-up procedures: Contact customers with overdue invoices to remind them of outstanding payments.
+  - Offer incentives: Provide discounts for early payments or penalties for late payments to encourage prompt settlement of invoices.
+  - Review credit policies: Reevaluate credit terms for customers with consistently late payments.
+  - Collections process: Implement a structured collections process for invoices that remain unpaid beyond a certain period.
+  - Customer communication: Communicate clearly with customers about payment expectations and consequences of late payments.
+  
+\newpage
+
+\sectionfont{\centering}
+  
+# Question 5 Code
+
+```{r question 5}
+# Set your working directory to where the files are located
+setwd("C:/GiggleGear_files")
+
+# Load required libraries
+library(dplyr)
+
+# Load the necessary files
+receiver_data <- read.csv("receiver_journal.csv")
+purchase_order_data <- read.csv("purchase_journal.csv")
+
+# Calculate percent duplicates and omissions for Receiver numbers
+receiver_duplicates <- 
+sum(duplicated(receiver_data$receiver_no)) / nrow(receiver_data) * 100
+
+receiver_omissions <- 
+sum(is.na(receiver_data$receiver_no)) / nrow(receiver_data) * 100
+
+# Calculate percent duplicates and omissions for Purchase Order numbers
+purchase_order_duplicates <- 
+sum(duplicated(purchase_order_data$po_no)) / nrow(purchase_order_data) * 100
+
+purchase_order_omissions <- 
+sum(is.na(purchase_order_data$po_no)) / nrow(purchase_order_data) * 100
+```
+
+\newpage 
+
+```{r}
+# Output the results
+cat("Receiver Number Duplicates Percentage:", receiver_duplicates, "%\n")
+cat("Receiver Number Omissions Percentage:", receiver_omissions, "%\n")
+cat("Purchase Order Number Duplicates Percentage:", 
+purchase_order_duplicates, "%\n")
+
+cat("Purchase Order Number Omissions Percentage:", 
+purchase_order_omissions, "%\n")
+
+# Determine if the transaction processing systems are in-control or out
+if (receiver_duplicates > 1 | receiver_omissions > 1 | 
+purchase_order_duplicates > 1 | purchase_order_omissions > 1) {
+  cat("Transaction processing systems are out-of-control.\n")
+} else {
+  cat("Transaction processing systems are in-control.\n")
+}
+```
+
+\newpage
+
+# Explanation
+
+# Key Highlights
+
+1. Receiver Number Duplicates Percentage: **0%**
+2. Receiver Number Omissions Percentage: **0%**
+3. Purchase Order Number Duplicates Percentage: **4.686704%**
+4. Purchase Order Number Omissions Percentage: **0%**
+
+5. Since the tolerable error rate for determining whether the transaction cycle control systems are in-control or out-of-control is 1%, we need to compare these percentages with the tolerable error rate.
+
+6. For Receiver numbers, both the percentage of duplicates and omissions are within the tolerable error rate (0% < 1%), indicating that the transaction processing system for Receiver numbers is in-control.
+
+7. However, for Purchase Order numbers, the percentage of duplicates (4.686704%) exceeds the tolerable error rate of 1%, indicating that the transaction processing system for Purchase Order numbers is out-of-control.
+
+# Conclusion
+
+Therefore, based on the given tolerable error rate, the Receiver number transaction processing system is in-control, while the Purchase Order number transaction processing system is out-of-control.
+
+\newpage
+
+\sectionfont{\centering}
+  
+# Question 6 Code
+
+
+```{r question 6}
+# Set your working directory to where the files are located
+setwd("C:/GiggleGear_files")
+
+# Load required libraries
+library(dplyr)
+library(knitr)
+
+# Load the necessary files
+fyear_begin_inventory <- read.csv("fyear_begin_inventory_ledger.csv")
+ye_inventory <- read.csv("real_world_ye_inventory.csv")
+
+# Calculate net realizable value
+ye_inventory <- ye_inventory %>%
+    mutate(net_realizable_value = actual_unit_market - (0.1 * unit_cost))
+
+# Identify inventory items where net realizable value is less than 110% of cost
+inventory_issues <- ye_inventory %>%
+    dplyr::filter(net_realizable_value < 1.1 * unit_cost)
+```
+
+\newpage
+
+```{r}
+# Output the list of inventory items and their issues
+if (nrow(inventory_issues) > 0) {
+    cat("Inventory items where net realizable value is less than 110% of cost:\n")
+    print(inventory_issues)
+    cat("\nThese findings may indicate potential overvaluation of inventory\n")
+    cat("\nimpacting the accuracy of the financial statements and the audit decisions.")
+} else {
+    print("No inventory items found where net realizable value is less than 110%")
+}
+```
+
+\newpage
+
+# Explanation
+
+The results indicate that numerous inventory items have a net realizable value (NRV) that is less than 110% of the cost, which could have significant implications for the financial audit:
+
+1. **Inventory Valuation:** The extensive list of items with NRV less than 110% of the cost could suggest a systematic issue with how inventory is valued. This could be due to market prices falling below cost or perhaps conservative pricing strategies. In either case, it raises questions about the appropriateness of the inventory valuation method currently in use.
+
+2. **Financial Statement Accuracy:** The auditor must assess the potential overstatement of inventory and consequently the overvaluation of current assets on the balance sheet. This can have a ripple effect on profitability ratios and other financial metrics that stakeholders rely upon.
+
+3. **Audit Adjustments:** Auditors might need to propose write-downs for these items to reflect a lower inventory valuation, thereby ensuring the inventory is stated at the lower of cost or market value, in line with accounting principles.
+Risk Assessment: This finding could alter the auditor's risk assessment, increasing the scrutiny on inventory and possibly other areas where similar issues may be present.
+
+4. **Management Review:** It could also suggest that management's review controls over inventory pricing are not operating effectively, which might require a discussion with management and potentially an improvement of internal controls.
+
+5. **Impairment Considerations:** The auditor may also need to consider whether an impairment of inventory has occurred, which would require a detailed impairment test and could lead to a significant write-down.
+
+6. **Disclosure:** Additionally, there may be a need for enhanced disclosures in the financial statements to inform users about the methods used to value inventory and any significant changes from prior periods.
+
+# Conclusion
+
+In conclusion, the discovery of such widespread undervaluation suggests the need for a thorough investigation to ensure that the financial statements provide a true and fair view of the company's financial position. Auditors would likely take these findings into account when forming their opinion on the financial statements and may consider the need for adjustments or enhanced disclosures.
+
+
+\newpage
+
+\sectionfont{\centering}
+  
+# Question 7
+
+# Introduction
+
+The review of GiggleGear Inc.’s financial statements has been conducted using a series of detailed tests on various elements of the company’s financial transactions. These tests included analyses of distribution and normality of financial data, duplication rates, and specific audits of inventory valuation and receivable collections.
+
+# Findings
+
+1. **Transaction Controls and Duplication Rates:** The tests revealed significant issues with transaction controls, notably high duplication rates in invoices and collection receipts. These areas are considered out-of-control, indicating a high likelihood of errors in financial reporting.
+
+2. **Distribution Analyses:** High risk levels were detected in the analysis of 'Collection Amount' and 'Sales Extended', suggesting that the data for these categories deviates significantly from normal distributions. This implies potential inaccuracies in revenue and cash flow reporting, which may affect the financial statements’ reliability.
+
+3. **Inventory and Receivable Audits:** The findings indicated discrepancies in the inventory valuations, with several items valued below reasonable thresholds. Additionally, the age analysis of receivables highlighted a substantial amount of overdue accounts, which may not be collectible. These factors contribute to potential overstatements of assets.
+
+# Opinion
+
+Given the critical issues identified in the controls over invoicing and collections, along with concerns regarding inventory valuation and receivable recoverability, there is reasonable doubt about the accuracy of the financial statements as presented. The financial statements may not fully represent the financial position of GiggleGear Inc. in accordance with generally accepted accounting principles due to identified risks of material misstatement.
+
+# Recommendation
+
+It is recommended that GiggleGear Inc. undertakes a thorough revision of their internal control systems, particularly in the areas of transaction processing and inventory management. Additional detailed audits and corrective actions should be prioritized to address the discrepancies identified in the financial data, ensuring that future financial statements provide a fair and accurate representation of the company’s financial status.
